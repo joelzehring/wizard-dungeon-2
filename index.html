@@ -1,0 +1,1686 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Wizard Dungeon 2: The Forgotten Lightness</title>
+    <!-- Tailwind CSS for UI HUD styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js for 3D graphics rendering -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800&family=MedievalSharp&family=Plus+Jakarta+Sans:wght@400;600&display=swap');
+
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #050508;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        .font-cinzel { font-family: 'Cinzel', serif; }
+        .font-medieval { font-family: 'MedievalSharp', cursive; }
+
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        /* Glassmorphism HUD styling */
+        .hud-panel {
+            background: rgba(12, 10, 24, 0.82);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(147, 51, 234, 0.35);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.7);
+        }
+
+        /* Fixed Centered Crosshair styling */
+        #crosshair {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 50;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+        }
+
+        #minimap-canvas {
+            border: 2px solid rgba(168, 85, 247, 0.5);
+            border-radius: 50%;
+            box-shadow: 0 0 15px rgba(168, 85, 247, 0.3);
+        }
+
+        .damage-flash {
+            animation: flashRed 0.4s ease-out;
+        }
+
+        @keyframes flashRed {
+            0% { background-color: rgba(220, 38, 38, 0.4); }
+            100% { background-color: rgba(220, 38, 38, 0); }
+        }
+
+        /* Glow effects */
+        .text-glow-purple { text-shadow: 0 0 10px rgba(168, 85, 247, 0.8), 0 0 20px rgba(147, 51, 234, 0.5); }
+        .text-glow-cyan { text-shadow: 0 0 10px rgba(56, 189, 248, 0.8), 0 0 20px rgba(14, 165, 233, 0.5); }
+        .text-glow-gold { text-shadow: 0 0 10px rgba(234, 179, 8, 0.8), 0 0 20px rgba(202, 138, 4, 0.5); }
+        .text-glow-red { text-shadow: 0 0 10px rgba(239, 68, 68, 0.8), 0 0 20px rgba(185, 28, 28, 0.6); }
+
+        #interact-prompt {
+            position: fixed;
+            top: 60%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 45;
+            pointer-events: none;
+            transition: all 0.2s ease-in-out;
+        }
+
+        /* Story dialogue typing style */
+        .story-box {
+            background: linear-gradient(180deg, rgba(20, 14, 38, 0.95) 0%, rgba(8, 6, 16, 0.98) 100%);
+            border: 1px solid rgba(234, 179, 8, 0.4);
+        }
+    </style>
+</head>
+<body class="bg-gray-950 text-white overflow-hidden">
+
+    <!-- 3D Canvas Container -->
+    <div id="canvas-container"></div>
+
+    <!-- Red Damage Flash Layer -->
+    <div id="damage-overlay" class="pointer-events-none absolute inset-0 z-20 transition-all duration-300"></div>
+
+    <!-- Floating Interaction Prompt -->
+    <div id="interact-prompt" class="hidden">
+        <div class="hud-panel px-6 py-3 rounded-full flex items-center gap-3 border border-amber-400/50 shadow-lg animate-bounce">
+            <span class="bg-amber-400 text-gray-950 px-2.5 py-0.5 rounded-lg font-bold text-sm">E</span>
+            <span id="interact-text" class="text-amber-200 font-cinzel font-semibold text-sm">Open Altar of Light</span>
+        </div>
+    </div>
+
+    <!-- Top Screen Boss Health Bar -->
+    <div id="boss-bar-container" class="fixed top-4 left-1/2 -translate-x-1/2 z-30 w-11/12 max-w-xl hidden pointer-events-none">
+        <div class="hud-panel p-3.5 rounded-2xl border border-red-500/50 shadow-2xl flex flex-col gap-1.5">
+            <div class="flex justify-between items-center text-xs font-bold font-cinzel">
+                <span id="boss-name" class="text-red-400 text-glow-red tracking-wider flex items-center gap-2">
+                    <i class="fa-solid fa-crown text-amber-400"></i> UMBRAL SOVEREIGN, LORD OF SHADOWS
+                </span>
+                <span id="boss-hp-text" class="text-red-300">1000 / 1000</span>
+            </div>
+            <div class="w-full h-4 bg-gray-950/90 rounded-full p-0.5 border border-red-900/60 overflow-hidden">
+                <div id="boss-hp-bar" class="h-full bg-gradient-to-r from-purple-800 via-red-600 to-rose-500 rounded-full transition-all duration-200" style="width: 100%;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- UI Overlay (HUD) -->
+    <div id="hud-layer" class="relative z-10 w-full h-full pointer-events-none flex flex-col justify-between p-4 md:p-6 select-none hidden">
+        
+        <!-- Top HUD Bar -->
+        <div class="flex justify-between items-start w-full">
+            <!-- Player Stats: HP, Mana, Level -->
+            <div class="hud-panel p-4 rounded-2xl flex flex-col gap-3 w-64 md:w-80 pointer-events-auto">
+                <div class="flex justify-between items-center border-b border-purple-900/50 pb-2">
+                    <span class="font-medieval text-xl text-purple-300 font-bold tracking-wider">Arcane Adept</span>
+                    <span id="location-indicator" class="font-cinzel text-xs bg-emerald-900/80 px-2.5 py-1 rounded-full text-emerald-200 border border-emerald-500/40">FOREST HUT</span>
+                </div>
+
+                <!-- Health Bar -->
+                <div>
+                    <div class="flex justify-between text-xs mb-1 font-semibold">
+                        <span class="text-red-400 flex items-center gap-1"><i class="fa-solid fa-heart"></i> Health</span>
+                        <span id="hp-text" class="text-red-300">100 / 100</span>
+                    </div>
+                    <div class="w-full h-3 bg-gray-950/80 rounded-full p-0.5 border border-red-900/40 overflow-hidden">
+                        <div id="hp-bar" class="h-full bg-gradient-to-r from-red-700 via-red-500 to-rose-400 rounded-full transition-all duration-200" style="width: 100%;"></div>
+                    </div>
+                </div>
+
+                <!-- Mana Bar -->
+                <div>
+                    <div class="flex justify-between text-xs mb-1 font-semibold">
+                        <span class="text-cyan-400 flex items-center gap-1"><i class="fa-solid fa-wand-magic-sparkles"></i> Mana</span>
+                        <span id="mana-text" class="text-cyan-300">100 / 100</span>
+                    </div>
+                    <div class="w-full h-3 bg-gray-950/80 rounded-full p-0.5 border border-cyan-900/40 overflow-hidden">
+                        <div id="mana-bar" class="h-full bg-gradient-to-r from-blue-600 via-cyan-500 to-sky-300 rounded-full transition-all duration-200" style="width: 100%;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Score & Dungeon Objective -->
+            <div class="flex flex-col items-end gap-3">
+                <div class="hud-panel px-5 py-3 rounded-2xl text-right">
+                    <div class="text-xs text-purple-300 uppercase tracking-widest font-semibold">Light Score</div>
+                    <div id="score-text" class="font-cinzel text-2xl font-extrabold text-glow-gold text-amber-400">0000</div>
+                </div>
+
+                <!-- MiniMap -->
+                <div id="minimap-container" class="relative hud-panel p-2 rounded-full pointer-events-auto shadow-2xl">
+                    <canvas id="minimap-canvas" width="140" height="140"></canvas>
+                    <div class="absolute inset-0 flex items-center justify-center pointer-events-none opacity-20">
+                        <i class="fa-solid fa-compass text-4xl text-purple-400"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Center Crosshair -->
+        <div id="crosshair">
+            <svg width="32" height="32" viewBox="0 0 32 32" fill="none" class="opacity-90 drop-shadow-[0_0_8px_rgba(56,189,248,0.8)]">
+                <circle cx="16" cy="16" r="10" stroke="#a855f7" stroke-width="1.5" stroke-dasharray="4 2" opacity="0.8"/>
+                <circle cx="16" cy="16" r="2.5" fill="#38bdf8"/>
+                <line x1="16" y1="2" x2="16" y2="7" stroke="#38bdf8" stroke-width="1.5" stroke-linecap="round"/>
+                <line x1="16" y1="25" x2="16" y2="30" stroke="#38bdf8" stroke-width="1.5" stroke-linecap="round"/>
+                <line x1="2" y1="16" x2="7" y2="16" stroke="#38bdf8" stroke-width="1.5" stroke-linecap="round"/>
+                <line x1="25" y1="16" x2="30" y2="16" stroke="#38bdf8" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+        </div>
+
+        <!-- Bottom Controls Indicator -->
+        <div class="flex justify-between items-end w-full">
+            <div class="hud-panel p-3 px-4 rounded-xl text-xs text-purple-300/80 flex gap-4 hidden md:flex">
+                <span><strong class="text-purple-200">WASD / ARROWS</strong> Move</span>
+                <span><strong class="text-purple-200">LEFT CLICK / SPACE</strong> Fire Spell</span>
+                <span><strong class="text-purple-200">E / CLICK ALTAR</strong> Upgrade</span>
+            </div>
+
+            <!-- Active Spell Card -->
+            <div class="hud-panel p-3 rounded-2xl flex items-center gap-3">
+                <div id="spell-icon-1" class="w-12 h-12 rounded-xl bg-purple-900/60 border border-purple-400/50 flex items-center justify-center text-amber-300 text-xl shadow-inner">
+                    <i class="fa-solid fa-fire-flame-curved"></i>
+                </div>
+                <div>
+                    <div id="active-spell-name" class="text-xs font-bold text-purple-200">ARCANE ORB (LVL 1)</div>
+                    <div id="active-spell-sub" class="text-[10px] text-purple-400">Damage: 20 | Velocity: 20</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Start / Title Screen -->
+    <div id="start-screen" class="absolute inset-0 z-30 flex items-center justify-center bg-gradient-to-b from-gray-950 via-purple-950/90 to-black p-4">
+        <div class="hud-panel p-8 md:p-12 rounded-3xl max-w-xl w-full text-center border border-purple-500/30 flex flex-col items-center gap-6 shadow-2xl">
+            <div class="w-20 h-20 rounded-full bg-purple-900/40 border-2 border-purple-400/50 flex items-center justify-center text-purple-300 text-4xl mb-2 text-glow-purple">
+                <i class="fa-solid fa-hat-wizard"></i>
+            </div>
+            
+            <div>
+                <h1 class="font-medieval text-3xl md:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-purple-300 to-cyan-300 text-glow-purple tracking-wide">
+                    WIZARD DUNGEON 2
+                </h1>
+                <p class="font-cinzel text-sm md:text-base text-purple-300/80 mt-1 tracking-widest uppercase">The Forgotten Lightness</p>
+            </div>
+
+            <p class="text-sm text-gray-300 leading-relaxed font-light">
+                Descend into a 25-floor procedural campaign to vanquish the <strong>Umbral Sovereign</strong> on Floor 26, or upgrade your spells at the Forest Hut Altar of Light!
+            </p>
+
+            <button id="start-story-btn" class="w-full py-4 rounded-2xl bg-gradient-to-r from-amber-600 via-purple-600 to-indigo-700 hover:from-amber-500 hover:to-indigo-600 text-white font-cinzel font-bold text-lg tracking-wider shadow-lg transition-all border border-amber-300/40">
+                ENTER STORY MODE
+            </button>
+        </div>
+    </div>
+
+    <!-- Story Mode Narrative Modal -->
+    <div id="story-modal" class="absolute inset-0 z-40 flex items-center justify-center bg-black/90 p-4 hidden">
+        <div class="story-box p-8 md:p-10 rounded-3xl max-w-2xl w-full border border-amber-400/50 flex flex-col gap-6 shadow-2xl relative">
+            <div class="flex items-center gap-4 border-b border-amber-500/30 pb-4">
+                <div class="w-14 h-14 rounded-2xl bg-amber-500/20 border border-amber-400/60 flex items-center justify-center text-amber-300 text-3xl text-glow-gold">
+                    <i class="fa-solid fa-book-bookmark"></i>
+                </div>
+                <div>
+                    <h2 class="font-medieval text-2xl md:text-3xl font-bold text-amber-300 text-glow-gold">THE FORGOTTEN LIGHTNESS</h2>
+                    <p class="text-xs text-amber-200/70 font-cinzel">CHRONICLES OF THE ARCANE WIZARD</p>
+                </div>
+            </div>
+
+            <div class="text-sm md:text-base text-gray-200 leading-relaxed space-y-4 font-light">
+                <p>
+                    For centuries, the realm flourished under the gentle radiance of the primordial light. But deep within the abyssal core, the <strong class="text-purple-300">Umbral Sovereign</strong> awakened, casting a smothering blanket of shadow across the lands.
+                </p>
+                <p>
+                    As the sole surviving Arcane Adept, you reside in your secluded <strong class="text-emerald-300">Forest Hut</strong>. To restore the Forgotten Lightness, you must plunge through <strong>25 treacherous dungeon layers</strong>. Every 5 floors, deeper terrors awaken:
+                </p>
+                <div class="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs font-semibold py-2">
+                    <div class="bg-purple-950/60 p-2 rounded-lg border border-purple-800/40 text-purple-200">👹 F1-5: Void Goblins</div>
+                    <div class="bg-purple-950/60 p-2 rounded-lg border border-purple-800/40 text-purple-200">🕷️ F6-10: Shadow Crawlers</div>
+                    <div class="bg-purple-950/60 p-2 rounded-lg border border-purple-800/40 text-purple-200">🔮 F11-15: Spectral Cultists</div>
+                    <div class="bg-purple-950/60 p-2 rounded-lg border border-purple-800/40 text-purple-200">🗿 F16-20: Abyssal Golems</div>
+                    <div class="bg-purple-950/60 p-2 rounded-lg border border-purple-800/40 text-purple-200">⚔️ F21-25: Void Knights</div>
+                    <div class="bg-red-950/70 p-2 rounded-lg border border-red-700/60 text-red-300">👑 F26: Final Boss</div>
+                </div>
+                <p>
+                    Vanquish the Sovereign on <strong>Floor 26</strong> to unlock Endless Mode and save the realm!
+                </p>
+            </div>
+
+            <button id="begin-quest-btn" class="w-full py-4 rounded-2xl bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 text-gray-950 font-cinzel font-extrabold text-lg tracking-wider shadow-lg transition-all hover:brightness-110">
+                BEGIN QUEST (ENTER FOREST HUB)
+            </button>
+        </div>
+    </div>
+
+    <!-- Spell Upgrade Altar Modal -->
+    <div id="upgrade-modal" class="absolute inset-0 z-40 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 hidden">
+        <div class="hud-panel p-6 md:p-8 rounded-3xl max-w-2xl w-full border border-amber-400/40 flex flex-col gap-6 shadow-2xl relative">
+            <!-- Header -->
+            <div class="flex justify-between items-center border-b border-amber-500/30 pb-4">
+                <div class="flex items-center gap-3">
+                    <div class="w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-400/50 flex items-center justify-center text-amber-300 text-2xl text-glow-gold">
+                        <i class="fa-solid fa-gem"></i>
+                    </div>
+                    <div>
+                        <h2 class="font-medieval text-2xl md:text-3xl font-bold text-amber-300 text-glow-gold">ALTAR OF LIGHT</h2>
+                        <p class="text-xs text-amber-200/70">Channel your harvested Light Score to empower your arcane arts</p>
+                    </div>
+                </div>
+                <!-- Light Score Balance -->
+                <div class="bg-amber-950/60 border border-amber-500/40 px-4 py-2 rounded-xl text-right">
+                    <div class="text-[10px] uppercase text-amber-300 font-semibold tracking-wider">Current Light</div>
+                    <div id="upgrade-light-score" class="font-cinzel text-xl font-extrabold text-amber-400 text-glow-gold">0000</div>
+                </div>
+            </div>
+
+            <!-- Upgrade Items List -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[60vh] overflow-y-auto pr-1">
+                
+                <!-- Spell Damage -->
+                <div class="bg-purple-950/40 border border-purple-500/30 p-4 rounded-2xl flex flex-col justify-between gap-3 hover:border-purple-400/60 transition-all">
+                    <div>
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="font-bold text-purple-200 flex items-center gap-2"><i class="fa-solid fa-burst text-amber-400"></i> Arcane Power</span>
+                            <span id="lvl-damage" class="text-xs font-semibold bg-purple-900/80 text-purple-200 px-2 py-0.5 rounded-md border border-purple-500/40">Lvl 1</span>
+                        </div>
+                        <p class="text-xs text-gray-300">Increases base damage dealt by your light projectile spells.</p>
+                        <div id="stat-damage" class="text-[11px] text-purple-300 mt-2 font-mono">Current: 20 DMG &rarr; Next: 28 DMG</div>
+                    </div>
+                    <button id="buy-damage" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-yellow-500 hover:from-amber-500 hover:to-yellow-400 text-gray-950 font-bold font-cinzel text-sm shadow-md transition-all flex justify-between px-4 items-center">
+                        <span>UPGRADE</span>
+                        <span id="cost-damage" class="text-xs bg-black/30 px-2 py-0.5 rounded-lg text-amber-100">100 Light</span>
+                    </button>
+                </div>
+
+                <!-- Spell Speed / Range -->
+                <div class="bg-purple-950/40 border border-purple-500/30 p-4 rounded-2xl flex flex-col justify-between gap-3 hover:border-purple-400/60 transition-all">
+                    <div>
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="font-bold text-purple-200 flex items-center gap-2"><i class="fa-solid fa-bolt text-cyan-400"></i> Light Velocity</span>
+                            <span id="lvl-speed" class="text-xs font-semibold bg-purple-900/80 text-purple-200 px-2 py-0.5 rounded-md border border-purple-500/40">Lvl 1</span>
+                        </div>
+                        <p class="text-xs text-gray-300">Increases spell travel speed and projectile duration distance.</p>
+                        <div id="stat-speed" class="text-[11px] text-purple-300 mt-2 font-mono">Current: 20 Speed &rarr; Next: 25 Speed</div>
+                    </div>
+                    <button id="buy-speed" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-yellow-500 hover:from-amber-500 hover:to-yellow-400 text-gray-950 font-bold font-cinzel text-sm shadow-md transition-all flex justify-between px-4 items-center">
+                        <span>UPGRADE</span>
+                        <span id="cost-speed" class="text-xs bg-black/30 px-2 py-0.5 rounded-lg text-amber-100">150 Light</span>
+                    </button>
+                </div>
+
+                <!-- Mana Efficiency -->
+                <div class="bg-purple-950/40 border border-purple-500/30 p-4 rounded-2xl flex flex-col justify-between gap-3 hover:border-purple-400/60 transition-all">
+                    <div>
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="font-bold text-purple-200 flex items-center gap-2"><i class="fa-solid fa-wand-magic-sparkles text-blue-400"></i> Mana Focus</span>
+                            <span id="lvl-mana" class="text-xs font-semibold bg-purple-900/80 text-purple-200 px-2 py-0.5 rounded-md border border-purple-500/40">Lvl 1</span>
+                        </div>
+                        <p class="text-xs text-gray-300">Accelerates passive mana regeneration speed in battle.</p>
+                        <div id="stat-mana" class="text-[11px] text-purple-300 mt-2 font-mono">Current: 15 Regen/s &rarr; Next: 22 Regen/s</div>
+                    </div>
+                    <button id="buy-mana" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-yellow-500 hover:from-amber-500 hover:to-yellow-400 text-gray-950 font-bold font-cinzel text-sm shadow-md transition-all flex justify-between px-4 items-center">
+                        <span>UPGRADE</span>
+                        <span id="cost-mana" class="text-xs bg-black/30 px-2 py-0.5 rounded-lg text-amber-100">120 Light</span>
+                    </button>
+                </div>
+
+                <!-- Vitality -->
+                <div class="bg-purple-950/40 border border-purple-500/30 p-4 rounded-2xl flex flex-col justify-between gap-3 hover:border-purple-400/60 transition-all">
+                    <div>
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="font-bold text-purple-200 flex items-center gap-2"><i class="fa-solid fa-shield-halved text-red-400"></i> Arcane Vitality</span>
+                            <span id="lvl-hp" class="text-xs font-semibold bg-purple-900/80 text-purple-200 px-2 py-0.5 rounded-md border border-purple-500/40">Lvl 1</span>
+                        </div>
+                        <p class="text-xs text-gray-300">Boosts maximum health and replenishes your vigor.</p>
+                        <div id="stat-hp" class="text-[11px] text-purple-300 mt-2 font-mono">Current: 100 HP &rarr; Next: 130 HP</div>
+                    </div>
+                    <button id="buy-hp" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-yellow-500 hover:from-amber-500 hover:to-yellow-400 text-gray-950 font-bold font-cinzel text-sm shadow-md transition-all flex justify-between px-4 items-center">
+                        <span>UPGRADE</span>
+                        <span id="cost-hp" class="text-xs bg-black/30 px-2 py-0.5 rounded-lg text-amber-100">100 Light</span>
+                    </button>
+                </div>
+
+                <!-- Light Aura -->
+                <div class="bg-purple-950/40 border border-purple-500/30 p-4 rounded-2xl flex flex-col justify-between gap-3 hover:border-purple-400/60 transition-all md:col-span-2">
+                    <div>
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="font-bold text-purple-200 flex items-center gap-2"><i class="fa-solid fa-sun text-yellow-300"></i> Luminary Aura</span>
+                            <span id="lvl-aura" class="text-xs font-semibold bg-purple-900/80 text-purple-200 px-2 py-0.5 rounded-md border border-purple-500/40">Lvl 1</span>
+                        </div>
+                        <p class="text-xs text-gray-300">Expands the radiant light radius around your staff to pierce deeper into dark dungeons.</p>
+                        <div id="stat-aura" class="text-[11px] text-purple-300 mt-2 font-mono">Current: 18 Light Radius &rarr; Next: 24 Light Radius</div>
+                    </div>
+                    <button id="buy-aura" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-yellow-500 hover:from-amber-500 hover:to-yellow-400 text-gray-950 font-bold font-cinzel text-sm shadow-md transition-all flex justify-between px-4 items-center">
+                        <span>UPGRADE</span>
+                        <span id="cost-aura" class="text-xs bg-black/30 px-2 py-0.5 rounded-lg text-amber-100">200 Light</span>
+                    </button>
+                </div>
+
+            </div>
+
+            <!-- Footer Close -->
+            <div class="flex justify-end pt-2 border-t border-purple-900/40">
+                <button id="close-upgrade-btn" class="px-6 py-2.5 rounded-xl bg-purple-900/60 hover:bg-purple-800/80 text-purple-200 font-cinzel text-sm border border-purple-500/40 transition-all">
+                    CLOSE ALTAR
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Victory Screen (Boss Vanquished) -->
+    <div id="victory-screen" class="absolute inset-0 z-40 flex items-center justify-center bg-black/90 backdrop-blur-md p-4 hidden">
+        <div class="hud-panel p-8 md:p-12 rounded-3xl max-w-lg w-full text-center border border-amber-400/60 flex flex-col items-center gap-6 shadow-2xl">
+            <div class="w-20 h-20 rounded-full bg-amber-500/20 border-2 border-amber-400 flex items-center justify-center text-amber-300 text-4xl text-glow-gold">
+                <i class="fa-solid fa-trophy"></i>
+            </div>
+            
+            <div>
+                <h2 class="font-medieval text-3xl md:text-4xl font-extrabold text-amber-300 text-glow-gold">VICTORY OVER SHADOWS!</h2>
+                <p class="text-sm text-gray-300 mt-2 font-light">
+                    The <strong>Umbral Sovereign</strong> has been banished! The Forgotten Lightness has returned to the realm.
+                </p>
+            </div>
+
+            <div class="w-full bg-amber-950/40 p-4 rounded-xl border border-amber-800/40 flex justify-around">
+                <div>
+                    <div class="text-xs text-amber-200/70">Victory Bonus</div>
+                    <div class="text-xl font-bold text-amber-400 font-cinzel text-glow-gold">+2000 Light</div>
+                </div>
+                <div class="border-r border-amber-900/40"></div>
+                <div>
+                    <div class="text-xs text-amber-200/70">Mode Unlocked</div>
+                    <div class="text-xl font-bold text-purple-300 font-cinzel">ENDLESS MODE</div>
+                </div>
+            </div>
+
+            <button id="victory-continue-btn" class="w-full py-4 rounded-2xl bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 hover:brightness-110 text-gray-950 font-cinzel font-bold text-lg tracking-wider shadow-lg">
+                ENTER ENDLESS MODE (FOREST HUB)
+            </button>
+        </div>
+    </div>
+
+    <!-- Game Over Screen -->
+    <div id="game-over-screen" class="absolute inset-0 z-40 flex items-center justify-center bg-black/90 p-4 hidden">
+        <div class="hud-panel p-8 rounded-3xl max-w-md w-full text-center border border-red-500/40 flex flex-col items-center gap-6 shadow-2xl">
+            <div class="w-16 h-16 rounded-full bg-red-900/40 border border-red-500/50 flex items-center justify-center text-red-400 text-3xl">
+                <i class="fa-solid fa-skull"></i>
+            </div>
+            
+            <div>
+                <h2 id="game-over-title" class="font-medieval text-4xl font-extrabold text-red-500 text-glow-purple">YOU VANISHED</h2>
+                <p id="game-over-subtitle" class="text-sm text-gray-400 mt-1">The dark spirits consumed your light.</p>
+            </div>
+
+            <div class="w-full bg-gray-900/80 p-4 rounded-xl border border-gray-800 flex justify-around">
+                <div>
+                    <div class="text-xs text-gray-400">Floors Cleared</div>
+                    <div id="final-floor" class="text-xl font-bold text-purple-300 font-cinzel">0</div>
+                </div>
+                <div class="border-r border-gray-800"></div>
+                <div>
+                    <div class="text-xs text-gray-400">Light Retained</div>
+                    <div id="final-score" class="text-xl font-bold text-amber-400 font-cinzel">0000</div>
+                </div>
+            </div>
+
+            <button id="restart-btn" class="w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-600 to-purple-700 hover:from-emerald-500 hover:to-purple-600 text-white font-cinzel font-bold tracking-wider shadow-lg transition-all">
+                RETURN TO FOREST HUT
+            </button>
+        </div>
+    </div>
+<!-- Game Logic & Three.js Code -->
+    <script>
+        /**
+         * WIZARD DUNGEON 2: THE FORGOTTEN LIGHTNESS
+         * Full 3D Story Campaign, 5 Enemy Tiers, Boss Fight & Endless Mode
+         */
+
+        // --- AUDIO ENGINE (Web Audio API Synthesizer) ---
+        class SoundEngine {
+            constructor() {
+                this.ctx = null;
+                this.ambientOsc = null;
+                this.currentMode = null;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    const AudioContext = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioContext();
+                }
+            }
+
+            setAmbientMode(mode) {
+                if (!this.ctx) return;
+                if (this.currentMode === mode) return;
+                this.currentMode = mode;
+
+                if (this.ambientOsc) {
+                    try { this.ambientOsc.stop(); } catch(e){}
+                    this.ambientOsc = null;
+                }
+
+                if (mode === 'dungeon' || mode === 'boss') {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = mode === 'boss' ? 'sawtooth' : 'triangle';
+                    osc.frequency.setValueAtTime(mode === 'boss' ? 35 : 45, this.ctx.currentTime);
+
+                    const filter = this.ctx.createBiquadFilter();
+                    filter.type = 'lowpass';
+                    filter.frequency.setValueAtTime(mode === 'boss' ? 220 : 140, this.ctx.currentTime);
+
+                    gain.gain.setValueAtTime(0.08, this.ctx.currentTime);
+
+                    osc.connect(filter);
+                    filter.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start();
+                    this.ambientOsc = osc;
+                } else if (mode === 'forest') {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(110, this.ctx.currentTime);
+
+                    const filter = this.ctx.createBiquadFilter();
+                    filter.type = 'lowpass';
+                    filter.frequency.setValueAtTime(350, this.ctx.currentTime);
+
+                    gain.gain.setValueAtTime(0.05, this.ctx.currentTime);
+
+                    osc.connect(filter);
+                    filter.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start();
+                    this.ambientOsc = osc;
+                }
+            }
+
+            playCastSpellSound() {
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(600, now);
+                osc.frequency.exponentialRampToValueAtTime(150, now + 0.25);
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.25);
+            }
+
+            playHitSound() {
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(120, now);
+                osc.frequency.exponentialRampToValueAtTime(30, now + 0.15);
+                gain.gain.setValueAtTime(0.25, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.15);
+            }
+
+            playUpgradeSound() {
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(300, now);
+                osc.frequency.exponentialRampToValueAtTime(700, now + 0.35);
+                gain.gain.setValueAtTime(0.25, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.35);
+            }
+
+            playEnemyDeathSound() {
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(220, now);
+                osc.frequency.exponentialRampToValueAtTime(40, now + 0.4);
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.4);
+            }
+
+            playPortalSound() {
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(250, now);
+                osc.frequency.linearRampToValueAtTime(900, now + 0.5);
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.5);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.5);
+            }
+        }
+
+        const sounds = new SoundEngine();
+
+        // --- PROCEDURAL DUNGEON GENERATOR ---
+        class DungeonGenerator {
+            constructor(width, height) {
+                this.width = width;
+                this.height = height;
+                this.grid = [];
+                this.rooms = [];
+            }
+
+            generate() {
+                this.grid = Array(this.height).fill(0).map(() => Array(this.width).fill(0));
+                this.rooms = [];
+
+                const minRoomSize = 4;
+                const maxRoomSize = 8;
+                const maxRooms = 12;
+
+                for (let r = 0; r < maxRooms; r++) {
+                    const w = Math.floor(Math.random() * (maxRoomSize - minRoomSize + 1)) + minRoomSize;
+                    const h = Math.floor(Math.random() * (maxRoomSize - minRoomSize + 1)) + minRoomSize;
+                    const x = Math.floor(Math.random() * (this.width - w - 2)) + 1;
+                    const y = Math.floor(Math.random() * (this.height - h - 2)) + 1;
+
+                    let overlaps = false;
+                    for (let room of this.rooms) {
+                        if (x < room.x + room.w + 1 && x + w + 1 > room.x &&
+                            y < room.y + room.h + 1 && y + h + 1 > room.y) {
+                            overlaps = true;
+                            break;
+                        }
+                    }
+
+                    if (!overlaps) {
+                        for (let i = y; i < y + h; i++) {
+                            for (let j = x; j < x + w; j++) {
+                                this.grid[i][j] = 1;
+                            }
+                        }
+
+                        const newRoom = { x, y, w, h, cx: Math.floor(x + w / 2), cy: Math.floor(y + h / 2) };
+                        
+                        if (this.rooms.length > 0) {
+                            const prev = this.rooms[this.rooms.length - 1];
+                            this.carveCorridor(prev.cx, prev.cy, newRoom.cx, newRoom.cy);
+                        }
+
+                        this.rooms.push(newRoom);
+                    }
+                }
+                return { grid: this.grid, rooms: this.rooms };
+            }
+carveCorridor(x1, y1, x2, y2) {
+                let x = x1;
+                let y = y1;
+
+                while (x !== x2) {
+                    this.grid[y][x] = 1;
+                    x += (x2 > x) ? 1 : -1;
+                }
+                while (y !== y2) {
+                    this.grid[y][x] = 1;
+                    y += (y2 > y) ? 1 : -1;
+                }
+                this.grid[y2][x2] = 1;
+            }
+        }
+
+        // --- MAIN GAME ENGINE ---
+        class GameEngine {
+            constructor() {
+                this.container = document.getElementById('canvas-container');
+                this.locationState = 'FOREST_HUT'; // 'FOREST_HUT' or 'DUNGEON'
+                this.currentFloor = 0; // 0 = Hub, 1-25 = Story, 26 = Boss, 27+ = Endless
+                this.isEndlessModeUnlocked = false;
+                this.score = 300;
+                this.tileSize = 4;
+
+                // Upgrades
+                this.upgrades = {
+                    damage: { lvl: 1, base: 20, step: 8, cost: 100 },
+                    speed: { lvl: 1, base: 20, step: 5, cost: 150 },
+                    manaRegen: { lvl: 1, base: 15, step: 7, cost: 120 },
+                    hp: { lvl: 1, base: 100, step: 30, cost: 100 },
+                    aura: { lvl: 1, base: 18, step: 6, cost: 200 }
+                };
+
+                // Player Stats
+                this.player = {
+                    hp: 100,
+                    maxHp: 100,
+                    mana: 100,
+                    maxMana: 100,
+                    pos: new THREE.Vector3(0, 1.2, 5),
+                    rotationY: 0,
+                    speed: 7.5,
+                    mesh: null,
+                    staffLight: null
+                };
+
+                // Game Entities
+                this.keys = {};
+                this.projectiles = [];
+                this.enemyProjectiles = [];
+                this.enemies = [];
+                this.particles = [];
+                this.fireflies = [];
+                this.portal = null;
+                this.altar = null;
+                this.bossEntity = null;
+                this.gameRunning = false;
+                this.upgradeMenuOpen = false;
+                this.isNearAltar = false;
+
+                // Three.js Setup
+                this.scene = new THREE.Scene();
+                this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+                
+                this.renderer = new THREE.WebGLRenderer({ antialias: true });
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+                this.renderer.shadowMap.enabled = true;
+                this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+                this.container.appendChild(this.renderer.domElement);
+
+                // Minimap Setup
+                this.minimapCanvas = document.getElementById('minimap-canvas');
+                this.minimapCtx = this.minimapCanvas.getContext('2d');
+
+                this.clock = new THREE.Clock();
+
+                this.initListeners();
+                this.setupUpgradeUI();
+            }
+
+            initListeners() {
+                window.addEventListener('keydown', (e) => {
+                    this.keys[e.code] = true;
+                    if (e.code === 'Space' && this.gameRunning && !this.upgradeMenuOpen) {
+                        this.castSpell();
+                    }
+                    if (e.code === 'KeyE' && this.isNearAltar && !this.upgradeMenuOpen) {
+                        this.openUpgradeMenu();
+                    }
+                });
+                window.addEventListener('keyup', (e) => { this.keys[e.code] = false; });
+
+                window.addEventListener('resize', () => {
+                    this.camera.aspect = window.innerWidth / window.innerHeight;
+                    this.camera.updateProjectionMatrix();
+                    this.renderer.setSize(window.innerWidth, window.innerHeight);
+                });
+
+                window.addEventListener('mousedown', (e) => {
+                    if (this.gameRunning && !this.upgradeMenuOpen && e.button === 0) {
+                        this.castSpell();
+                    }
+                });
+
+                window.addEventListener('mousemove', (e) => {
+                    if (this.gameRunning && !this.upgradeMenuOpen) {
+                        const movementX = e.movementX || 0;
+                        this.player.rotationY -= movementX * 0.003;
+                    }
+                });
+
+                // Flow Event listeners
+                document.getElementById('start-story-btn').addEventListener('click', () => {
+                    document.getElementById('start-screen').classList.add('hidden');
+                    document.getElementById('story-modal').classList.remove('hidden');
+                });
+
+                document.getElementById('begin-quest-btn').addEventListener('click', () => {
+                    sounds.init();
+                    document.getElementById('story-modal').classList.add('hidden');
+                    document.getElementById('hud-layer').classList.remove('hidden');
+                    this.gameRunning = true;
+                    this.enterForestHutHub();
+                    this.clock.start();
+                    this.animate();
+                });
+
+                document.getElementById('close-upgrade-btn').addEventListener('click', () => {
+                    this.closeUpgradeMenu();
+                });
+
+                document.getElementById('victory-continue-btn').addEventListener('click', () => {
+                    document.getElementById('victory-screen').classList.add('hidden');
+                    this.isEndlessModeUnlocked = true;
+                    this.score += 2000;
+                    this.enterForestHutHub();
+                });
+
+                document.getElementById('restart-btn').addEventListener('click', () => {
+                    document.getElementById('game-over-screen').classList.add('hidden');
+                    this.player.hp = this.upgrades.hp.base;
+                    this.player.mana = 100;
+                    this.enterForestHutHub();
+                });
+            }
+
+            setupUpgradeUI() {
+                const types = ['damage', 'speed', 'mana', 'hp', 'aura'];
+                types.forEach(type => {
+                    const btn = document.getElementById(`buy-${type}`);
+                    if (btn) btn.addEventListener('click', () => this.purchaseUpgrade(type));
+                });
+            }
+
+            // --- 3D FOREST HUT HUB SCENE ---
+            enterForestHutHub() {
+                this.locationState = 'FOREST_HUT';
+                sounds.setAmbientMode('forest');
+                document.getElementById('boss-bar-container').classList.add('hidden');
+
+                // Clear scene
+                while (this.scene.children.length > 0) {
+                    this.scene.remove(this.scene.children[0]);
+                }
+                this.projectiles = [];
+                this.enemyProjectiles = [];
+                this.enemies = [];
+                this.particles = [];
+                this.fireflies = [];
+
+                this.scene.fog = new THREE.FogExp2(0x0a141d, 0.035);
+
+                const ambientLight = new THREE.AmbientLight(0x2d4356, 0.6);
+                this.scene.add(ambientLight);
+
+                const moonlight = new THREE.DirectionalLight(0x60a5fa, 0.8);
+                moonlight.position.set(20, 40, -20);
+                moonlight.castShadow = true;
+                this.scene.add(moonlight);
+
+                const groundGeo = new THREE.PlaneGeometry(80, 80);
+                const groundMat = new THREE.MeshStandardMaterial({ color: 0x1c3a27, roughness: 0.9 });
+                const ground = new THREE.Mesh(groundGeo, groundMat);
+                ground.rotation.x = -Math.PI / 2;
+                ground.receiveShadow = true;
+                this.scene.add(ground);
+
+                this.buildWizardHut(0, 0, -12);
+                this.buildCampfire(0, 0, 0);
+                this.buildAltarOfLight(-5, 0, 2);
+                this.createForestPortal(6, 0, 2);
+
+                for (let i = 0; i < 35; i++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const radius = 14 + Math.random() * 22;
+                    this.buildPineTree(Math.cos(angle) * radius, Math.sin(angle) * radius);
+                }
+
+                this.createFireflies();
+
+                this.player.pos.set(0, 1.2, 5);
+                this.player.rotationY = 0;
+                this.createPlayerMesh();
+
+                const modeText = this.isEndlessModeUnlocked ? `ENDLESS (F${this.currentFloor+1})` : `STORY F${this.currentFloor+1}/25`;
+                document.getElementById('location-indicator').innerText = modeText;
+                document.getElementById('location-indicator').className = 'font-cinzel text-xs bg-emerald-900/80 px-2.5 py-1 rounded-full text-emerald-200 border border-emerald-500/40';
+                document.getElementById('minimap-container').classList.add('hidden');
+            }
+
+            buildWizardHut(x, y, z) {
+                const hutGroup = new THREE.Group();
+                hutGroup.position.set(x, y, z);
+                const wall = new THREE.Mesh(new THREE.CylinderGeometry(4, 4.2, 3.5, 12), new THREE.MeshStandardMaterial({ color: 0x3d2314 }));
+                wall.position.y = 1.75;
+                hutGroup.add(wall);
+                const roof = new THREE.Mesh(new THREE.ConeGeometry(5.2, 3.5, 12), new THREE.MeshStandardMaterial({ color: 0x6e5229 }));
+                roof.position.y = 5.0;
+                hutGroup.add(roof);
+                const interiorLight = new THREE.PointLight(0xf59e0b, 2.5, 12);
+                interiorLight.position.set(0, 2, 3.5);
+                hutGroup.add(interiorLight);
+                this.scene.add(hutGroup);
+            }
+
+            buildCampfire(x, y, z) {
+                const fireGroup = new THREE.Group();
+                fireGroup.position.set(x, y, z);
+                const fireLight = new THREE.PointLight(0xf97316, 3.5, 16);
+                fireLight.position.set(0, 0.6, 0);
+                fireGroup.add(fireLight);
+                this.scene.add(fireGroup);
+            }
+
+            buildAltarOfLight(x, y, z) {
+                const group = new THREE.Group();
+                group.position.set(x, y, z);
+                const base = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.5, 1.2, 8), new THREE.MeshStandardMaterial({ color: 0x334155 }));
+                base.position.y = 0.6;
+                group.add(base);
+                const crystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.6, 0), new THREE.MeshStandardMaterial({ color: 0xf59e0b, emissive: 0xd97706, emissiveIntensity: 0.8 }));
+                crystal.position.y = 2.0;
+                group.add(crystal);
+                const aLight = new THREE.PointLight(0xf59e0b, 3, 10);
+                aLight.position.set(0, 2.0, 0);
+                group.add(aLight);
+                this.altar = group;
+                this.scene.add(group);
+            }
+
+            createForestPortal(x, z) {
+                const group = new THREE.Group();
+                group.position.set(x, 1.6, z);
+                const ring = new THREE.Mesh(new THREE.TorusGeometry(1.4, 0.15, 16, 32), new THREE.MeshBasicMaterial({ color: 0x38bdf8, wireframe: true }));
+                group.add(ring);
+                const pLight = new THREE.PointLight(0x38bdf8, 3.5, 14);
+                group.add(pLight);
+                this.portal = group;
+                this.scene.add(group);
+            }
+
+            buildPineTree(x, z) {
+                const treeGroup = new THREE.Group();
+                treeGroup.position.set(x, 0, z);
+                const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.4, 2.5), new THREE.MeshStandardMaterial({ color: 0x2b1810 }));
+                trunk.position.y = 1.25;
+                treeGroup.add(trunk);
+                for (let i = 0; i < 3; i++) {
+                    const fol = new THREE.Mesh(new THREE.ConeGeometry(2.2 - i * 0.4, 2.5, 7), new THREE.MeshStandardMaterial({ color: 0x0f2d1e }));
+                    fol.position.y = 2.5 + i * 1.4;
+                    treeGroup.add(fol);
+                }
+                this.scene.add(treeGroup);
+            }
+createFireflies() {
+                for (let i = 0; i < 30; i++) {
+                    const pMesh = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 6), new THREE.MeshBasicMaterial({ color: 0xa7f3d0 }));
+                    pMesh.position.set((Math.random() - 0.5) * 40, Math.random() * 4 + 0.5, (Math.random() - 0.5) * 40);
+                    this.scene.add(pMesh);
+                    this.fireflies.push({ mesh: pMesh, baseY: pMesh.position.y, offset: Math.random() * Math.PI * 2 });
+                }
+            }
+
+            // --- 3D DUNGEON LEVEL / BOSS ROOM SETUP ---
+            enterNextDungeonFloor() {
+                this.locationState = 'DUNGEON';
+                this.currentFloor++;
+
+                while (this.scene.children.length > 0) {
+                    this.scene.remove(this.scene.children[0]);
+                }
+                this.projectiles = [];
+                this.enemyProjectiles = [];
+                this.enemies = [];
+                this.particles = [];
+                this.fireflies = [];
+
+                if (this.currentFloor === 26 && !this.isEndlessModeUnlocked) {
+                    // BOSS LEVEL 26
+                    this.setupBossArena();
+                } else {
+                    // PROCEDURAL FLOOR 1-25 or 27+
+                    sounds.setAmbientMode('dungeon');
+                    sounds.playPortalSound();
+                    document.getElementById('boss-bar-container').classList.add('hidden');
+
+                    this.scene.fog = new THREE.FogExp2(0x050508, 0.08);
+                    this.scene.add(new THREE.AmbientLight(0x1a1528, 0.4));
+
+                    const mapWidth = 24 + Math.min(this.currentFloor, 20);
+                    const mapHeight = 24 + Math.min(this.currentFloor, 20);
+                    this.dungeonGen = new DungeonGenerator(mapWidth, mapHeight);
+                    const { grid, rooms } = this.dungeonGen.generate();
+                    this.grid = grid;
+                    this.mapWidth = mapWidth;
+                    this.mapHeight = mapHeight;
+
+                    const wallGeo = new THREE.BoxGeometry(this.tileSize, 4, this.tileSize);
+                    const wallMat = new THREE.MeshStandardMaterial({ color: 0x1e1b2e, roughness: 0.8 });
+                    const floorGeo = new THREE.PlaneGeometry(this.tileSize, this.tileSize);
+                    const floorMat = new THREE.MeshStandardMaterial({ color: 0x0d0b14, roughness: 0.9 });
+
+                    let wallCount = 0;
+                    for (let y = 0; y < mapHeight; y++) {
+                        for (let x = 0; x < mapWidth; x++) {
+                            if (grid[y][x] === 0) wallCount++;
+                        }
+                    }
+
+                    const instancedWalls = new THREE.InstancedMesh(wallGeo, wallMat, wallCount);
+                    let dummy = new THREE.Object3D();
+                    let wallIdx = 0;
+
+                    for (let y = 0; y < mapHeight; y++) {
+                        for (let x = 0; x < mapWidth; x++) {
+                            const posX = x * this.tileSize;
+                            const posZ = y * this.tileSize;
+                            if (grid[y][x] === 0) {
+                                dummy.position.set(posX, 2, posZ);
+                                dummy.updateMatrix();
+                                instancedWalls.setMatrixAt(wallIdx++, dummy.matrix);
+                            } else {
+                                const floorTile = new THREE.Mesh(floorGeo, floorMat);
+                                floorTile.rotation.x = -Math.PI / 2;
+                                floorTile.position.set(posX, 0, posZ);
+                                this.scene.add(floorTile);
+                            }
+                        }
+                    }
+                    this.scene.add(instancedWalls);
+
+                    const startRoom = rooms[0];
+                    this.player.pos.set(startRoom.cx * this.tileSize, 1.2, startRoom.cy * this.tileSize);
+                    this.createPlayerMesh();
+
+                    const exitRoom = rooms[rooms.length - 1];
+                    this.createForestPortal(exitRoom.cx * this.tileSize, exitRoom.cy * this.tileSize);
+
+                    // Spawn unlocked enemies across rooms
+                    for (let i = 1; i < rooms.length; i++) {
+                        const room = rooms[i];
+                        const count = Math.floor(Math.random() * 2) + 1 + Math.floor(this.currentFloor / 4);
+                        for (let c = 0; c < count; c++) {
+                            const ex = (room.x + 1 + Math.random() * (room.w - 2)) * this.tileSize;
+                            const ez = (room.y + 1 + Math.random() * (room.h - 2)) * this.tileSize;
+                            this.spawnTieredEnemy(ex, ez);
+                        }
+                    }
+
+                    const indicator = document.getElementById('location-indicator');
+                    if (this.isEndlessModeUnlocked) {
+                        indicator.innerText = `ENDLESS F${this.currentFloor}`;
+                    } else {
+                        indicator.innerText = `FLOOR ${this.currentFloor} / 25`;
+                    }
+                    indicator.className = 'font-cinzel text-xs bg-purple-900/80 px-2.5 py-1 rounded-full text-purple-200 border border-purple-500/40';
+                    document.getElementById('minimap-container').classList.remove('hidden');
+                }
+            }
+
+            // FLOOR 26 - UMBRAL SOVEREIGN BOSS ARENA
+            setupBossArena() {
+                sounds.setAmbientMode('boss');
+                sounds.playPortalSound();
+
+                this.scene.fog = new THREE.FogExp2(0x18051b, 0.04);
+                this.scene.add(new THREE.AmbientLight(0x3b0764, 0.5));
+
+                const bossLight = new THREE.DirectionalLight(0xef4444, 0.8);
+                bossLight.position.set(0, 30, 0);
+                this.scene.add(bossLight);
+
+                // Open 36x36 Boss Chamber Arena
+                const arenaSize = 40;
+                const floorMat = new THREE.MeshStandardMaterial({ color: 0x11081a, roughness: 0.6 });
+                const floor = new THREE.Mesh(new THREE.PlaneGeometry(arenaSize, arenaSize), floorMat);
+                floor.rotation.x = -Math.PI / 2;
+                this.scene.add(floor);
+
+                // Arena Wall Boundaries
+                const wallMat = new THREE.MeshStandardMaterial({ color: 0x2e0854, roughness: 0.7 });
+                const half = arenaSize / 2;
+                const w1 = new THREE.Mesh(new THREE.BoxGeometry(arenaSize, 6, 1), wallMat); w1.position.set(0, 3, -half); this.scene.add(w1);
+                const w2 = new THREE.Mesh(new THREE.BoxGeometry(arenaSize, 6, 1), wallMat); w2.position.set(0, 3, half); this.scene.add(w2);
+                const w3 = new THREE.Mesh(new THREE.BoxGeometry(1, 6, arenaSize), wallMat); w3.position.set(-half, 3, 0); this.scene.add(w3);
+                const w4 = new THREE.Mesh(new THREE.BoxGeometry(1, 6, arenaSize), wallMat); w4.position.set(half, 3, 0); this.scene.add(w4);
+
+                this.player.pos.set(0, 1.2, 14);
+                this.createPlayerMesh();
+
+                // Build Boss 3D Entity Model
+                const bossGroup = new THREE.Group();
+                bossGroup.position.set(0, 3.5, -10);
+
+                const body = new THREE.Mesh(new THREE.OctahedronGeometry(2.5, 2), new THREE.MeshStandardMaterial({ color: 0x090314, roughness: 0.2, metalness: 0.9 }));
+                bossGroup.add(body);
+
+                const core = new THREE.Mesh(new THREE.SphereGeometry(1.2, 16, 16), new THREE.MeshBasicMaterial({ color: 0xef4444 }));
+                bossGroup.add(core);
+
+                // Floating dark crystal orbitals
+                for (let i = 0; i < 4; i++) {
+                    const c = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1.8, 5), new THREE.MeshStandardMaterial({ color: 0x9333ea, emissive: 0x581c87 }));
+                    const angle = (i / 4) * Math.PI * 2;
+                    c.position.set(Math.cos(angle) * 3.8, 0, Math.sin(angle) * 3.8);
+                    bossGroup.add(c);
+                }
+
+                const bLight = new THREE.PointLight(0xef4444, 5, 20);
+                bossGroup.add(bLight);
+
+                this.scene.add(bossGroup);
+
+                this.bossEntity = {
+                    mesh: bossGroup,
+                    hp: 1000,
+                    maxHp: 1000,
+                    phase: 1,
+                    attackTimer: 0,
+                    teleportTimer: 0
+                };
+
+                document.getElementById('boss-bar-container').classList.remove('hidden');
+                document.getElementById('boss-hp-bar').style.width = '100%';
+                document.getElementById('boss-hp-text').innerText = '1000 / 1000';
+                document.getElementById('location-indicator').innerText = 'FLOOR 26: FINAL BOSS';
+                document.getElementById('location-indicator').className = 'font-cinzel text-xs bg-red-900/90 px-2.5 py-1 rounded-full text-red-200 border border-red-500/60 animate-pulse';
+                document.getElementById('minimap-container').classList.add('hidden');
+            }
+
+            createPlayerMesh() {
+                const group = new THREE.Group();
+                const lightRadius = this.upgrades.aura.base + (this.upgrades.aura.lvl - 1) * this.upgrades.aura.step;
+                const staffLight = new THREE.PointLight(0xa855f7, 2.5, lightRadius);
+                staffLight.position.set(0.6, 0.8, -0.8);
+                group.add(staffLight);
+                this.player.staffLight = staffLight;
+
+                const staffMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.8), new THREE.MeshStandardMaterial({ color: 0x4a2e18 }));
+                staffMesh.position.set(0.6, 0.2, -0.8);
+                staffMesh.rotation.x = Math.PI / 6;
+                group.add(staffMesh);
+
+                const orbMesh = new THREE.Mesh(new THREE.SphereGeometry(0.12, 16, 16), new THREE.MeshBasicMaterial({ color: 0x38bdf8 }));
+                orbMesh.position.set(0.6, 1.0, -1.0);
+                group.add(orbMesh);
+
+                this.player.mesh = group;
+                this.scene.add(group);
+            }
+
+            // --- 5-TIER ENEMY SPAWN FACTORY ---
+            spawnTieredEnemy(x, z) {
+                // Determine available unlocked enemy types based on floor tier
+                const availableTiers = [];
+                if (this.currentFloor >= 1) availableTiers.push('goblin');
+                if (this.currentFloor >= 6 || this.isEndlessModeUnlocked) availableTiers.push('crawler');
+                if (this.currentFloor >= 11 || this.isEndlessModeUnlocked) availableTiers.push('cultist');
+                if (this.currentFloor >= 16 || this.isEndlessModeUnlocked) availableTiers.push('golem');
+                if (this.currentFloor >= 21 || this.isEndlessModeUnlocked) availableTiers.push('knight');
+
+                const chosenType = availableTiers[Math.floor(Math.random() * availableTiers.length)];
+                const group = new THREE.Group();
+                group.position.set(x, 1.0, z);
+
+                let hp = 30, speed = 3.0, rangeCaster = false;
+
+                if (chosenType === 'goblin') {
+                    // Fast melee goblin cone
+                    const body = new THREE.Mesh(new THREE.ConeGeometry(0.6, 1.6, 8), new THREE.MeshStandardMaterial({ color: 0x15803d }));
+                    body.position.y = 0.8;
+                    group.add(body);
+                    hp = 30 + this.currentFloor * 5;
+                    speed = 3.8;
+                } else if (chosenType === 'crawler') {
+                    // Low shadow spider beetle
+                    const body = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.5, 1.4), new THREE.MeshStandardMaterial({ color: 0x312e81 }));
+                    body.position.y = 0.25;
+                    group.add(body);
+                    hp = 45 + this.currentFloor * 6;
+                    speed = 4.8;
+                } else if (chosenType === 'cultist') {
+                    // Hooded ranged dark energy caster
+                    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.7, 2.0, 8), new THREE.MeshStandardMaterial({ color: 0x581c87 }));
+                    body.position.y = 1.0;
+                    group.add(body);
+                    hp = 60 + this.currentFloor * 8;
+                    speed = 2.2;
+                    rangeCaster = true;
+                } else if (chosenType === 'golem') {
+                    // Massive heavy stone construct
+                    const body = new THREE.Mesh(new THREE.BoxGeometry(2.0, 2.8, 2.0), new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.9 }));
+                    body.position.y = 1.4;
+                    group.add(body);
+                    hp = 120 + this.currentFloor * 15;
+                    speed = 1.8;
+                } else if (chosenType === 'knight') {
+                    // Armored high-speed phantom knight
+                    const body = new THREE.Mesh(new THREE.DodecahedronGeometry(1.0), new THREE.MeshStandardMaterial({ color: 0x0284c7, metalness: 0.9 }));
+                    body.position.y = 1.0;
+                    group.add(body);
+                    hp = 160 + this.currentFloor * 18;
+                    speed = 5.2;
+                }
+
+                const eLight = new THREE.PointLight(0xef4444, 1.0, 5);
+                eLight.position.set(0, 1.0, 0);
+                group.add(eLight);
+
+                this.enemies.push({
+                    mesh: group,
+                    type: chosenType,
+                    hp: hp,
+                    speed: speed,
+                    isCaster: rangeCaster,
+                    attackCooldown: 0
+                });
+
+                this.scene.add(group);
+            }
+
+            castSpell() {
+                if (this.player.mana < 10) return;
+
+                this.player.mana -= 10;
+                sounds.playCastSpellSound();
+const projGeo = new THREE.SphereGeometry(0.25, 12, 12);
+                const projMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
+                const projMesh = new THREE.Mesh(projGeo, projMat);
+
+                const direction = new THREE.Vector3();
+                this.camera.getWorldDirection(direction);
+
+                const spawnPos = this.player.pos.clone().add(new THREE.Vector3(0, 0.4, 0)).add(direction.clone().multiplyScalar(0.6));
+                projMesh.position.copy(spawnPos);
+
+                const pLight = new THREE.PointLight(0x38bdf8, 4, 10);
+                projMesh.add(pLight);
+
+                this.scene.add(projMesh);
+
+                const currentSpeed = this.upgrades.speed.base + (this.upgrades.speed.lvl - 1) * this.upgrades.speed.step;
+
+                this.projectiles.push({
+                    mesh: projMesh,
+                    dir: direction,
+                    speed: currentSpeed,
+                    life: 2.2
+                });
+            }
+
+            castEnemyDarkOrb(fromPos, targetPos) {
+                const orb = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 8), new THREE.MeshBasicMaterial({ color: 0xc084fc }));
+                orb.position.copy(fromPos);
+                const dir = new THREE.Vector3().subVectors(targetPos, fromPos).normalize();
+                
+                this.scene.add(orb);
+                this.enemyProjectiles.push({ mesh: orb, dir: dir, speed: 12.0, life: 3.0 });
+            }
+
+            // --- UPGRADE ALTAR MECHANICS ---
+            openUpgradeMenu() {
+                this.upgradeMenuOpen = true;
+                this.updateUpgradeUI();
+                document.getElementById('upgrade-modal').classList.remove('hidden');
+            }
+
+            closeUpgradeMenu() {
+                this.upgradeMenuOpen = false;
+                document.getElementById('upgrade-modal').classList.add('hidden');
+            }
+
+            purchaseUpgrade(type) {
+                const up = this.upgrades[type];
+                if (!up) return;
+
+                if (this.score >= up.cost) {
+                    this.score -= up.cost;
+                    up.lvl++;
+                    up.cost = Math.floor(up.cost * 1.5);
+
+                    if (type === 'hp') {
+                        this.player.maxHp = up.base + (up.lvl - 1) * up.step;
+                        this.player.hp = this.player.maxHp;
+                    } else if (type === 'aura' && this.player.staffLight) {
+                        this.player.staffLight.distance = up.base + (up.lvl - 1) * up.step;
+                    }
+
+                    sounds.playUpgradeSound();
+                    this.updateUpgradeUI();
+                    this.updateHUD();
+                }
+            }
+
+            updateUpgradeUI() {
+                document.getElementById('upgrade-light-score').innerText = this.score.toString().padStart(4, '0');
+
+                const u = this.upgrades;
+                document.getElementById('lvl-damage').innerText = `Lvl ${u.damage.lvl}`;
+                document.getElementById('cost-damage').innerText = `${u.damage.cost} Light`;
+                document.getElementById('stat-damage').innerText = `Current: ${u.damage.base + (u.damage.lvl-1)*u.damage.step} DMG → Next: ${u.damage.base + u.damage.lvl*u.damage.step} DMG`;
+
+                document.getElementById('lvl-speed').innerText = `Lvl ${u.speed.lvl}`;
+                document.getElementById('cost-speed').innerText = `${u.speed.cost} Light`;
+                document.getElementById('stat-speed').innerText = `Current: ${u.speed.base + (u.speed.lvl-1)*u.speed.step} Speed → Next: ${u.speed.base + u.speed.lvl*u.speed.step} Speed`;
+
+                document.getElementById('lvl-mana').innerText = `Lvl ${u.manaRegen.lvl}`;
+                document.getElementById('cost-mana').innerText = `${u.manaRegen.cost} Light`;
+                document.getElementById('stat-mana').innerText = `Current: ${u.manaRegen.base + (u.manaRegen.lvl-1)*u.manaRegen.step} Regen/s → Next: ${u.manaRegen.base + u.manaRegen.lvl*u.manaRegen.step} Regen/s`;
+
+                document.getElementById('lvl-hp').innerText = `Lvl ${u.hp.lvl}`;
+                document.getElementById('cost-hp').innerText = `${u.hp.cost} Light`;
+                document.getElementById('stat-hp').innerText = `Current: ${u.hp.base + (u.hp.lvl-1)*u.hp.step} HP → Next: ${u.hp.base + u.hp.lvl*u.hp.step} HP`;
+
+                document.getElementById('lvl-aura').innerText = `Lvl ${u.aura.lvl}`;
+                document.getElementById('cost-aura').innerText = `${u.aura.cost} Light`;
+                document.getElementById('stat-aura').innerText = `Current: ${u.aura.base + (u.aura.lvl-1)*u.aura.step} Light Radius → Next: ${u.aura.base + u.aura.lvl*u.aura.step} Light Radius`;
+
+                const currentDmg = u.damage.base + (u.damage.lvl - 1) * u.damage.step;
+                const currentSpd = u.speed.base + (u.speed.lvl - 1) * u.speed.step;
+                document.getElementById('active-spell-name').innerText = `ARCANE ORB (LVL ${u.damage.lvl})`;
+                document.getElementById('active-spell-sub').innerText = `Damage: ${currentDmg} | Velocity: ${currentSpd}`;
+            }
+
+            // Main Animation Loop
+            animate() {
+                if (!this.gameRunning) return;
+                requestAnimationFrame(() => this.animate());
+
+                const delta = this.clock.getDelta();
+
+                if (!this.upgradeMenuOpen) {
+                    this.updatePlayer(delta);
+                    this.updateProjectiles(delta);
+                    this.updateEnemyProjectiles(delta);
+                    this.updateEnemies(delta);
+                    if (this.bossEntity) this.updateBossLogic(delta);
+                    this.updateParticles(delta);
+                    this.updateFireflies(delta);
+                }
+
+                this.updateHUD();
+                if (this.locationState === 'DUNGEON' && this.currentFloor !== 26) {
+                    this.renderMinimap();
+                }
+
+                this.camera.position.copy(this.player.pos).add(new THREE.Vector3(0, 0.6, 0));
+                this.camera.rotation.set(0, this.player.rotationY, 0, 'YXZ');
+
+                this.renderer.render(this.scene, this.camera);
+            }
+
+            updatePlayer(delta) {
+                const regenRate = this.upgrades.manaRegen.base + (this.upgrades.manaRegen.lvl - 1) * this.upgrades.manaRegen.step;
+                if (this.player.mana < this.player.maxMana) {
+                    this.player.mana = Math.min(this.player.maxMana, this.player.mana + regenRate * delta);
+                }
+
+                const moveSpeed = this.player.speed * delta;
+                const forward = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), this.player.rotationY);
+                const right = new THREE.Vector3(1, 0, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), this.player.rotationY);
+
+                let moveDir = new THREE.Vector3();
+                if (this.keys['KeyW'] || this.keys['ArrowUp']) moveDir.add(forward);
+                if (this.keys['KeyS'] || this.keys['ArrowDown']) moveDir.sub(forward);
+                if (this.keys['KeyA'] || this.keys['ArrowLeft']) moveDir.sub(right);
+                if (this.keys['KeyD'] || this.keys['ArrowRight']) moveDir.add(right);
+
+                if (moveDir.lengthSq() > 0) {
+                    moveDir.normalize();
+                    const targetPos = this.player.pos.clone().add(moveDir.clone().multiplyScalar(moveSpeed));
+                    
+                    if (this.locationState === 'DUNGEON') {
+                        if (this.currentFloor === 26) {
+                            // Arena boundary limits
+                            if (Math.abs(targetPos.x) < 18 && Math.abs(targetPos.z) < 18) {
+                                this.player.pos.copy(targetPos);
+                            }
+                        } else {
+                            const gridX = Math.floor((targetPos.x + this.tileSize / 2) / this.tileSize);
+                            const gridY = Math.floor((targetPos.z + this.tileSize / 2) / this.tileSize);
+                            if (gridX >= 0 && gridX < this.mapWidth && gridY >= 0 && gridY < this.mapHeight && this.grid[gridY][gridX] === 1) {
+                                this.player.pos.copy(targetPos);
+                            }
+                        }
+                    } else {
+                        if (targetPos.distanceTo(new THREE.Vector3(0, 1.2, 0)) < 26) {
+                            this.player.pos.copy(targetPos);
+                        }
+                    }
+                }
+
+                if (this.player.mesh) {
+                    this.player.mesh.position.copy(this.player.pos);
+                    this.player.mesh.rotation.y = this.player.rotationY;
+                }
+
+                if (this.portal) {
+                    this.portal.children[0].rotation.z += 1.5 * delta;
+                    if (this.player.pos.distanceTo(this.portal.position) < 1.8) {
+                        if (this.locationState === 'FOREST_HUT') {
+                            this.enterNextDungeonFloor();
+                        } else {
+                            sounds.playPortalSound();
+                            this.score += 400;
+                            this.enterForestHutHub();
+                        }
+                    }
+                }
+
+                if (this.locationState === 'FOREST_HUT' && this.altar) {
+                    this.altar.children[1].rotation.y += 1.0 * delta;
+                    const prompt = document.getElementById('interact-prompt');
+                    if (this.player.pos.distanceTo(this.altar.position) < 3.0) {
+                        this.isNearAltar = true;
+                        prompt.classList.remove('hidden');
+                    } else {
+                        this.isNearAltar = false;
+                        prompt.classList.add('hidden');
+                    }
+                } else {
+                    document.getElementById('interact-prompt').classList.add('hidden');
+                }
+            }
+
+            updateProjectiles(delta) {
+                const currentDmg = this.upgrades.damage.base + (this.upgrades.damage.lvl - 1) * this.upgrades.damage.step;
+
+                for (let i = this.projectiles.length - 1; i >= 0; i--) {
+                    const p = this.projectiles[i];
+                    p.life -= delta;
+                    p.mesh.position.add(p.dir.clone().multiplyScalar(p.speed * delta));
+let hitWall = false;
+                    if (this.locationState === 'DUNGEON' && this.currentFloor !== 26) {
+                        const gridX = Math.floor((p.mesh.position.x + this.tileSize / 2) / this.tileSize);
+                        const gridY = Math.floor((p.mesh.position.z + this.tileSize / 2) / this.tileSize);
+                        if (gridX < 0 || gridX >= this.mapWidth || gridY < 0 || gridY >= this.mapHeight || this.grid[gridY][gridX] === 0) {
+                            hitWall = true;
+                        }
+                    }
+
+                    // Check Boss Hit
+                    if (this.bossEntity) {
+                        if (p.mesh.position.distanceTo(this.bossEntity.mesh.position) < 2.5) {
+                            this.bossEntity.hp -= currentDmg;
+                            sounds.playHitSound();
+                            this.spawnParticles(p.mesh.position, 0xef4444);
+
+                            const bossHpPercent = Math.max(0, (this.bossEntity.hp / this.bossEntity.maxHp) * 100);
+                            document.getElementById('boss-hp-bar').style.width = `${bossHpPercent}%`;
+                            document.getElementById('boss-hp-text').innerText = `${Math.ceil(this.bossEntity.hp)} / ${this.bossEntity.maxHp}`;
+
+                            if (this.bossEntity.hp <= 500 && this.bossEntity.phase === 1) {
+                                this.bossEntity.phase = 2;
+                            }
+
+                            if (this.bossEntity.hp <= 0) {
+                                this.scene.remove(this.bossEntity.mesh);
+                                this.bossEntity = null;
+                                this.triggerVictory();
+                            }
+
+                            this.scene.remove(p.mesh);
+                            this.projectiles.splice(i, 1);
+                            continue;
+                        }
+                    }
+
+                    // Check Regular Enemies
+                    let hitEnemy = false;
+                    for (let j = this.enemies.length - 1; j >= 0; j--) {
+                        const enemy = this.enemies[j];
+                        if (p.mesh.position.distanceTo(enemy.mesh.position) < 1.2) {
+                            hitEnemy = true;
+                            enemy.hp -= currentDmg;
+                            sounds.playHitSound();
+                            this.spawnParticles(p.mesh.position, 0x38bdf8);
+
+                            if (enemy.hp <= 0) {
+                                sounds.playEnemyDeathSound();
+                                this.scene.remove(enemy.mesh);
+                                this.enemies.splice(j, 1);
+                                this.score += 100;
+                            }
+                            break;
+                        }
+                    }
+
+                    if (hitWall || hitEnemy || p.life <= 0) {
+                        if (hitWall) this.spawnParticles(p.mesh.position, 0xa855f7);
+                        this.scene.remove(p.mesh);
+                        this.projectiles.splice(i, 1);
+                    }
+                }
+            }
+
+            updateEnemyProjectiles(delta) {
+                for (let i = this.enemyProjectiles.length - 1; i >= 0; i--) {
+                    const orb = this.enemyProjectiles[i];
+                    orb.life -= delta;
+                    orb.mesh.position.add(orb.dir.clone().multiplyScalar(orb.speed * delta));
+
+                    if (orb.mesh.position.distanceTo(this.player.pos) < 1.2) {
+                        this.damagePlayer(20);
+                        this.scene.remove(orb.mesh);
+                        this.enemyProjectiles.splice(i, 1);
+                        continue;
+                    }
+
+                    if (orb.life <= 0) {
+                        this.scene.remove(orb.mesh);
+                        this.enemyProjectiles.splice(i, 1);
+                    }
+                }
+            }
+
+            updateEnemies(delta) {
+                for (let enemy of this.enemies) {
+                    const distToPlayer = enemy.mesh.position.distanceTo(this.player.pos);
+
+                    if (distToPlayer < 16) {
+                        const dir = new THREE.Vector3().subVectors(this.player.pos, enemy.mesh.position).normalize();
+                        dir.y = 0;
+
+                        if (enemy.isCaster && distToPlayer < 10 && distToPlayer > 4) {
+                            // Ranged enemy cast cooldown
+                            if (!enemy.castTimer) enemy.castTimer = 0;
+                            enemy.castTimer += delta;
+                            if (enemy.castTimer >= 2.0) {
+                                enemy.castTimer = 0;
+                                this.castEnemyDarkOrb(enemy.mesh.position, this.player.pos);
+                            }
+                        } else {
+                            const nextPos = enemy.mesh.position.clone().add(dir.multiplyScalar(enemy.speed * delta));
+                            if (this.currentFloor === 26) {
+                                enemy.mesh.position.copy(nextPos);
+                            } else {
+                                const gx = Math.floor((nextPos.x + this.tileSize / 2) / this.tileSize);
+                                const gy = Math.floor((nextPos.z + this.tileSize / 2) / this.tileSize);
+                                if (this.grid[gy] && this.grid[gy][gx] === 1) {
+                                    enemy.mesh.position.copy(nextPos);
+                                }
+                            }
+                        }
+
+                        enemy.mesh.lookAt(this.player.pos.x, enemy.mesh.position.y, this.player.pos.z);
+
+                        if (distToPlayer < 1.3) {
+                            if (!enemy.attackCooldown || enemy.attackCooldown <= 0) {
+                                this.damagePlayer(15);
+                                enemy.attackCooldown = 1.0;
+                            }
+                        }
+                    }
+
+                    if (enemy.attackCooldown > 0) enemy.attackCooldown -= delta;
+                }
+            }
+
+            // BOSS AI PHASES & ATTACKS
+            updateBossLogic(delta) {
+                const boss = this.bossEntity;
+                if (!boss) return;
+
+                boss.mesh.rotation.y += (boss.phase === 2 ? 2.5 : 1.0) * delta;
+                boss.attackTimer += delta;
+                boss.teleportTimer += delta;
+
+                // Phase 1: Multi-orb cascade & Goblin spawns
+                if (boss.attackTimer >= (boss.phase === 2 ? 1.5 : 2.5)) {
+                    boss.attackTimer = 0;
+                    for (let angle = -0.4; angle <= 0.4; angle += 0.4) {
+                        const dir = new THREE.Vector3().subVectors(this.player.pos, boss.mesh.position).normalize();
+                        dir.applyAxisAngle(new THREE.Vector3(0, 1, 0), angle);
+                        const orb = new THREE.Mesh(new THREE.SphereGeometry(0.4, 8, 8), new THREE.MeshBasicMaterial({ color: 0xef4444 }));
+                        orb.position.copy(boss.mesh.position);
+                        this.scene.add(orb);
+                        this.enemyProjectiles.push({ mesh: orb, dir: dir, speed: 14.0, life: 3.0 });
+                    }
+
+                    // Spawn Minion
+                    if (this.enemies.length < 4) {
+                        this.spawnTieredEnemy(boss.mesh.position.x + (Math.random()-0.5)*6, boss.mesh.position.z + (Math.random()-0.5)*6);
+                    }
+                }
+
+                // Phase 2: Teleport across Arena
+                if (boss.phase === 2 && boss.teleportTimer >= 4.0) {
+                    boss.teleportTimer = 0;
+                    this.spawnParticles(boss.mesh.position, 0x9333ea);
+                    boss.mesh.position.set((Math.random() - 0.5) * 24, 3.5, (Math.random() - 0.5) * 24);
+                    sounds.playPortalSound();
+                }
+            }
+
+            damagePlayer(amount) {
+                this.player.hp -= amount;
+                const overlay = document.getElementById('damage-overlay');
+                overlay.classList.add('damage-flash');
+                setTimeout(() => overlay.classList.remove('damage-flash'), 400);
+
+                if (this.player.hp <= 0) {
+                    this.gameOver();
+                }
+            }
+
+            spawnParticles(pos, colorHex) {
+                for (let i = 0; i < 12; i++) {
+                    const pMesh = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 6), new THREE.MeshBasicMaterial({ color: colorHex }));
+                    pMesh.position.copy(pos);
+                    const vel = new THREE.Vector3((Math.random() - 0.5) * 4, Math.random() * 3 + 1, (Math.random() - 0.5) * 4);
+                    this.scene.add(pMesh);
+                    this.particles.push({ mesh: pMesh, vel: vel, life: 0.4 });
+                }
+            }
+
+            updateParticles(delta) {
+                for (let i = this.particles.length - 1; i >= 0; i--) {
+                    const pt = this.particles[i];
+                    pt.life -= delta;
+                    pt.mesh.position.add(pt.vel.clone().multiplyScalar(delta));
+                    if (pt.life <= 0) {
+                        this.scene.remove(pt.mesh);
+                        this.particles.splice(i, 1);
+                    }
+                }
+            }
+
+            updateFireflies(delta) {
+                const time = this.clock.getElapsedTime();
+                for (let ff of this.fireflies) {
+                    ff.mesh.position.y = ff.baseY + Math.sin(time * 2 + ff.offset) * 0.4;
+                }
+            }
+
+            updateHUD() {
+                const hpPercent = Math.max(0, (this.player.hp / this.player.maxHp) * 100);
+                const manaPercent = Math.max(0, (this.player.mana / this.player.maxMana) * 100);
+
+                document.getElementById('hp-bar').style.width = `${hpPercent}%`;
+                document.getElementById('hp-text').innerText = `${Math.ceil(this.player.hp)} / ${this.player.maxHp}`;
+                document.getElementById('mana-bar').style.width = `${manaPercent}%`;
+                document.getElementById('mana-text').innerText = `${Math.ceil(this.player.mana)} / ${this.player.maxMana}`;
+                document.getElementById('score-text').innerText = this.score.toString().padStart(4, '0');
+            }
+
+            renderMinimap() {
+                const ctx = this.minimapCtx;
+                const size = 140;
+                const cellDim = size / Math.max(this.mapWidth, this.mapHeight);
+
+                ctx.fillStyle = '#050508';
+                ctx.fillRect(0, 0, size, size);
+
+                for (let y = 0; y < this.mapHeight; y++) {
+                    for (let x = 0; x < this.mapWidth; x++) {
+                        if (this.grid[y][x] === 1) {
+                            ctx.fillStyle = '#1e1b2e';
+                            ctx.fillRect(x * cellDim, y * cellDim, cellDim, cellDim);
+                        }
+                    }
+                }
+
+                if (this.portal) {
+                    const px = Math.floor(this.portal.position.x / this.tileSize) * cellDim;
+                    const py = Math.floor(this.portal.position.z / this.tileSize) * cellDim;
+                    ctx.fillStyle = '#38bdf8';
+                    ctx.beginPath();
+                    ctx.arc(px + cellDim/2, py + cellDim/2, 3, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                ctx.fillStyle = '#ef4444';
+                for (let enemy of this.enemies) {
+                    const ex = Math.floor(enemy.mesh.position.x / this.tileSize) * cellDim;
+                    const ey = Math.floor(enemy.mesh.position.z / this.tileSize) * cellDim;
+                    ctx.fillRect(ex + 1, ey + 1, Math.max(2, cellDim - 2), Math.max(2, cellDim - 2));
+                }
+const playerX = (this.player.pos.x / this.tileSize) * cellDim;
+                const playerY = (this.player.pos.z / this.tileSize) * cellDim;
+                ctx.fillStyle = '#a855f7';
+                ctx.beginPath();
+                ctx.arc(playerX, playerY, 4, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            triggerVictory() {
+                sounds.playUpgradeSound();
+                document.getElementById('victory-screen').classList.remove('hidden');
+                document.getElementById('boss-bar-container').classList.add('hidden');
+            }
+
+            gameOver() {
+                this.gameRunning = false;
+                document.getElementById('game-over-screen').classList.remove('hidden');
+                document.getElementById('final-floor').innerText = Math.max(0, this.currentFloor - 1);
+                document.getElementById('final-score').innerText = this.score;
+            }
+        }
+
+        window.onload = () => {
+            const game = new GameEngine();
+        };
+    </script>
+</body>
+</html>
